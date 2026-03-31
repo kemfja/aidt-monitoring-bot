@@ -1,0 +1,14 @@
+[
+  {
+    "id": "example-id",
+    "name": "예시 대시보드",
+    "url": "https://example.com/dashboard",
+    "method": "GET",
+    "errorConditions": {
+      "expectedStatusCodes": [200],
+      "maxResponseTime": 5000,
+      "errorKeywords": ["error", "fail"]
+    },
+    "enabled": true
+  }
+]

@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SUBAK'S 서버 모니터링 대시보드</title>
+  <link rel="stylesheet" href="/css/dashboard.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1><img src="/img/shih-tzu.png" alt="시츄" class="logo-img"> SUBAK'S 서버 모니터링 대시보드</h1>
+      <div class="header-right">
+        <span id="lastUpdate"></span>
+        <div class="scheduler-toggle">
+          <span class="toggle-label" id="schedulerToggleLabel">자동 검사 ON</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="schedulerToggle" checked>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <span id="checkStatus" class="status-tag ready">준비</span>
+        <button id="runAllBtn" class="btn btn-primary btn-sm">수동 검사 실행</button>
+      </div>
+    </header>
+
+    <!-- 검사 결과 (검사 실행 시에만 표시) -->
+    <div id="checkResults" class="check-results"></div>
+
+    <!-- 섹션 1: 모니터링 설정 (읽기 전용) -->
+    <section class="card">
+      <div class="card-header">
+        <h2>1. 모니터링 설정(읽기 전용)</h2>
+      </div>
+      <div class="card-body">
+        <table id="urlTable" class="data-table">
+          <thead>
+            <tr>
+              <th>이름</th>
+              <th>URL</th>
+              <th>에러 조건</th>
+              <th>상태</th>
+            </tr>
+          </thead>
+          <tbody id="urlTableBody">
+            <tr><td colspan="4" class="loading">로딩 중...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 섹션 2: 히스토리 -->
+    <section class="card">
+      <div class="card-header">
+        <h2>2. 히스토리</h2>
+        <div class="header-actions">
+          <div class="status-filter">
+            <label><input type="checkbox" id="filterAll" checked> 전체</label>
+            <label><input type="checkbox" id="filterSuccess" checked> 정상</label>
+            <label><input type="checkbox" id="filterError" checked> 에러</label>
+          </div>
+          <select id="historyUrlFilter">
+            <option value="">전체 URL</option>
+          </select>
+        </div>
+      </div>
+      <div class="card-body">
+        <table id="historyTable" class="data-table">
+          <thead>
+            <tr>
+              <th>이름</th>
+              <th>응답 시간</th>
+              <th>체크 시간</th>
+              <th>상태</th>
+            </tr>
+          </thead>
+          <tbody id="historyTableBody">
+            <tr><td colspan="4" class="loading">로딩 중...</td></tr>
+          </tbody>
+        </table>
+        <div id="pagination" class="pagination"></div>
+      </div>
+    </section>
+
+    <!-- 섹션 3: Slack 알림 테스트 -->
+    <section class="card">
+      <div class="card-header">
+        <h2>3. Slack 알림 테스트</h2>
+        <button id="testNotificationBtn" class="btn btn-secondary btn-sm">테스트 알림 발송</button>
+      </div>
+      <div class="card-body">
+        <div id="notificationStatus" class="notification-status"></div>
+        <div class="notification-history">
+          <h3>최근 알림 히스토리 (최대 7일 보관)</h3>
+          <div id="notificationHistoryList" class="notification-history-list">로딩 중...</div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- URL 상세 모달 (읽기 전용) -->
+  <div id="urlDetailModal" class="modal">
+    <div class="modal-content modal-large">
+      <div class="modal-header">
+        <h2 id="urlDetailTitle">URL 상세</h2>
+        <button class="close-btn" id="closeUrlDetailBtn">&times;</button>
+      </div>
+      <div id="urlDetailContent" class="modal-body"></div>
+    </div>
+  </div>
+
+  <!-- 모니터링 결과 상세 모달 -->
+  <div id="resultDetailModal" class="modal">
+    <div class="modal-content modal-large">
+      <div class="modal-header">
+        <h2 id="resultDetailTitle">체크 결과 상세</h2>
+        <button class="close-btn" id="closeResultDetailBtn">&times;</button>
+      </div>
+      <div id="resultDetailContent" class="modal-body"></div>
+    </div>
+  </div>
+
+  <script src="/js/dashboard.js"></script>
+</body>
+</html>
