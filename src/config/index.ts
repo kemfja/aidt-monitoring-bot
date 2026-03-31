@@ -63,7 +63,7 @@ class ConfigManager {
    * 데이터 파일 경로 반환
    */
   getDataDir(): string {
-    return path.join(process.cwd(), 'data');
+    return process.env.DATA_DIR || path.join(process.cwd(), 'data');
   }
 
   /**

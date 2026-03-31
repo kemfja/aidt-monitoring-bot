@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: aidt-monitoring-bot
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SLACK_WEBHOOK_URL
+        sync: false
+      - key: API_KEY
+        generateValue: true
+      - key: MONITORING_INTERVAL
+        value: "0 * * * *"
+      - key: DATA_DIR
+        value: /opt/render/project/data
+    disk:
+      name: monitoring-data
+      mountPath: /opt/render/project/data
+      sizeGB: 1
