@@ -14,7 +14,16 @@
 - 서버 재시작 시 항상 ON 상태로 시작
 
 ### 수정 파일
+- `src/core/scheduler.ts` - `startAndWait()` 메서드 추가, cron 설정 분리
 - `src/routes/monitoring.ts` - 스케줄러 상태 조회/토글 엔드포인트 추가
 - `public/index.html` - 토글 스위치 UI 추가
 - `public/css/dashboard.css` - 토글 스타일 추가
-- `public/js/dashboard.js` - 토글 API 연동 로직 추가
+- `public/js/dashboard.js` - 토글 API 연동, 상태 태그/검사 결과 표시 로직 추가
+
+## Render 배포 설정 및 자동 시작 스크립트
+
+### 변경 사항
+- `render.yaml` 추가 (Render.com 무료 플랜 배포 설정)
+- `src/config/index.ts` - `DATA_DIR` 환경 변수로 데이터 경로 오버라이드 지원
+- `start-server.bat` 추가 (PC 부팅 시 자동 서버 시작용)
+- `.gitignore` 추가, GitHub 초기 푸시 완료
