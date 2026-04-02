@@ -224,6 +224,9 @@ function getConditionSummary(conditions) {
 
   const parts = [];
 
+  if (conditions.grafanaApiCheck) {
+    parts.push('Grafana API');
+  }
   if (conditions.expectedStatusCodes) {
     parts.push(`상태: ${conditions.expectedStatusCodes.join(', ')}`);
   }
@@ -571,6 +574,42 @@ function renderErrorConditions(conditions) {
     html += `</tbody></table></div>`;
   }
 
+  // Grafana API 체크
+  if (conditions.grafanaApiCheck) {
+    const g = conditions.grafanaApiCheck;
+    html += `
+      <div class="condition-item">
+        <div class="condition-type">Grafana API 체크</div>
+        <div class="condition-detail-row">
+          <span class="condition-label">대시보드 UID:</span>
+          <span class="condition-value"><code>${escapeHtml(g.dashboardUid || '-')}</code></span>
+        </div>
+        <div class="condition-detail-row">
+          <span class="condition-label">호스트:</span>
+          <span class="condition-value"><code>${escapeHtml(g.hostUrl || '-')}</code></span>
+        </div>
+        <div class="condition-detail-row">
+          <span class="condition-label">패널 ID:</span>
+          <span class="condition-value">${g.panelIds ? g.panelIds.join(', ') : '-'}</span>
+        </div>
+        <div class="condition-detail-row">
+          <span class="condition-label">임계값:</span>
+          <span class="condition-value">${g.threshold !== undefined ? g.threshold : '-'} 이상 시 에러</span>
+        </div>
+        <div class="condition-detail-row">
+          <span class="condition-label">시간 범위:</span>
+          <span class="condition-value">${g.timeRangeHours ? g.timeRangeHours + '시간' : '-'}</span>
+        </div>
+        ${g.targetServices && g.targetServices.length > 0 ? `
+        <div class="condition-detail-row">
+          <span class="condition-label">대상 서비스:</span>
+          <span class="condition-value">${g.targetServices.map(s => `<code>${escapeHtml(s)}</code>`).join(', ')}</span>
+        </div>
+        ` : ''}
+      </div>
+    `;
+  }
+
   return html || '<p>설정된 에러 조건이 없습니다.</p>';
 }
 
@@ -725,6 +764,12 @@ function showResultDetail(result) {
       <div class="detail-row">
         <span class="detail-label">에러 메시지</span>
         <span class="detail-value" style="color: #dc3545;">${escapeHtml(result.errorMessage)}</span>
+      </div>
+      ` : ''}
+      ${result.checkedUrl ? `
+      <div class="detail-row">
+        <span class="detail-label">체크 URL</span>
+        <span class="detail-value"><a href="${escapeHtml(result.checkedUrl)}" target="_blank" rel="noopener" style="color: #0d6efd; word-break: break-all;">${escapeHtml(result.checkedUrl)}</a></span>
       </div>
       ` : ''}
     </div>

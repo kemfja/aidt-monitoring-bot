@@ -12,6 +12,8 @@ export interface PlaywrightCheckResult {
   text?: string;
   error?: string;
   collectedValues?: SelectorValue[];
+  /** 체크에 사용된 실제 URL */
+  checkedUrl?: string;
 }
 
 /**
@@ -20,23 +22,71 @@ export interface PlaywrightCheckResult {
 let sharedBrowser: Browser | null = null;
 
 /**
- * 공유 브라우저 반환 (없으면 생성)
+ * Chromium 실행 인자 (Windows 안정성)
+ */
+const BROWSER_ARGS = [
+  '--no-sandbox',
+  '--disable-setuid-sandbox',
+  '--disable-dev-shm-usage',
+  '--disable-gpu',
+  '--disable-software-rasterizer',
+  '--disable-extensions',
+];
+
+/** 시스템 Chrome 사용 (Chromium보다 Windows에서 안정적) */
+const BROWSER_CHANNEL = 'chrome';
+
+/** 페이지 이동/요소 대기 기본 타임아웃 (60초) */
+const PAGE_TIMEOUT = 60000;
+
+/** 체크 실패 시 재시도 대기 시간 (5초) */
+const RETRY_DELAY = 5000;
+
+/** 최대 재시도 횟수 */
+const MAX_CHECK_RETRIES = 2;
+
+/** 브라우저 keep-alive 간격 (2분) */
+const KEEP_ALIVE_INTERVAL = 2 * 60 * 1000;
+
+/** keep-alive 타이머 */
+let keepAliveTimer: NodeJS.Timeout | null = null;
+
+/**
+ * 공유 브라우저 반환 (없으면 생성, 실패 시 최대 3회 재시도)
  */
 async function getSharedBrowser(): Promise<Browser> {
-  if (!sharedBrowser || !sharedBrowser.isConnected()) {
-    sharedBrowser = await chromium.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
-    });
-    logger.info('Playwright 공유 브라우저 초기화 완료');
+  if (sharedBrowser && sharedBrowser.isConnected()) {
+    return sharedBrowser;
   }
-  return sharedBrowser;
+
+  const MAX_RETRIES = 3;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      sharedBrowser = await chromium.launch({
+        headless: true,
+        channel: BROWSER_CHANNEL,
+        args: BROWSER_ARGS,
+      });
+      startKeepAlive();
+      logger.info(`Playwright 공유 브라우저 초기화 완료 (${attempt}회차)`);
+      return sharedBrowser;
+    } catch (error: any) {
+      sharedBrowser = null;
+      logger.warn(`Playwright 브라우저 실행 실패 (${attempt}/${MAX_RETRIES}): ${error?.message}`);
+      if (attempt < MAX_RETRIES) {
+        await new Promise(r => setTimeout(r, 2000 * attempt));
+      }
+    }
+  }
+
+  throw new Error(`Playwright 브라우저 실행 ${MAX_RETRIES}회 재시도 모두 실패`);
 }
 
 /**
  * 공유 브라우저 종료
  */
 export async function closeSharedBrowser(): Promise<void> {
+  stopKeepAlive();
   if (sharedBrowser) {
     try {
       await sharedBrowser.close();
@@ -47,82 +97,162 @@ export async function closeSharedBrowser(): Promise<void> {
 }
 
 /**
- * 단일 URL 체크 (공유 브라우저 사용)
+ * 브라우저 keep-alive 시작 (idle disconnect 방지)
+ */
+function startKeepAlive(): void {
+  stopKeepAlive();
+  keepAliveTimer = setInterval(async () => {
+    try {
+      if (!sharedBrowser || !sharedBrowser.isConnected()) {
+        logger.info('Playwright keep-alive: 브라우저 연결 끊김, 즉시 재시작');
+        sharedBrowser = null;
+        stopKeepAlive();
+        // 연결 끊김 시 즉시 재시작 (cron 실행 시 재시작 방지)
+        await getSharedBrowser();
+        return;
+      }
+      const context = await sharedBrowser.newContext();
+      const page = await context.newPage();
+      await page.goto('about:blank');
+      await context.close();
+      logger.info('Playwright keep-alive 완료');
+    } catch (error: any) {
+      logger.warn('Playwright keep-alive 실패', { error: error?.message });
+      sharedBrowser = null;
+      stopKeepAlive();
+    }
+  }, KEEP_ALIVE_INTERVAL);
+}
+
+/**
+ * 브라우저 keep-alive 중지
+ */
+function stopKeepAlive(): void {
+  if (keepAliveTimer) {
+    clearInterval(keepAliveTimer);
+    keepAliveTimer = null;
+  }
+}
+
+/**
+ * Pinpoint URL의 from/to를 현재 시간 기준으로 동적 생성
+ * from: 현재 시간 - 1시간, to: 현재 시간
+ */
+function resolveDynamicUrl(url: string): string {
+  if (!url.includes('pinpoint.aidt.ai')) {
+    return url;
+  }
+
+  const now = new Date();
+  const from = new Date(now.getTime() - 60 * 60 * 1000);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const format = (d: Date) =>
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
+
+  return url
+    .replace(/from=[^&]+/, `from=${format(from)}`)
+    .replace(/to=[^&]+/, `to=${format(now)}`);
+}
+
+/**
+ * 단일 URL 체크 (공유 브라우저 사용, 실패 시 재시도)
  */
 export async function checkWithPlaywright(config: UrlConfig): Promise<PlaywrightCheckResult> {
   const browser = await getSharedBrowser();
-  let context: BrowserContext | null = null;
+  let lastError: any = null;
 
-  try {
-    context = await browser.newContext({
-      viewport: { width: 1920, height: 1080 },
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    });
-    const page = await context.newPage();
-    const startTime = Date.now();
+  // Pinpoint URL 동적 시간 생성
+  const resolvedUrl = resolveDynamicUrl(config.url);
+  if (resolvedUrl !== config.url) {
+    logger.info(`Pinpoint URL 동적 생성: ${config.name}`, { url: resolvedUrl });
+  }
 
-    // 페이지 이동
-    await page.goto(config.url, {
-      waitUntil: 'networkidle',
-      timeout: 30000
-    });
+  for (let attempt = 1; attempt <= MAX_CHECK_RETRIES; attempt++) {
+    let context: BrowserContext | null = null;
 
-    const isPinpoint = config.url.includes('pinpoint.aidt.ai');
+    try {
+      context = await browser.newContext({
+        viewport: { width: 1920, height: 1080 },
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      });
+      const page = await context.newPage();
+      const startTime = Date.now();
 
-    if (!isPinpoint) {
-      // 페이지 로드 대기 (동적 콘텐츠 로딩)
-      await page.waitForTimeout(3000);
+      // 페이지 이동
+      await page.goto(resolvedUrl, {
+        waitUntil: 'networkidle',
+        timeout: PAGE_TIMEOUT,
+      });
 
-      // 데이터 영역 클릭 및 에러 값 체크 (에듀템 대시보드)
-      const clickResult = await tryClickDataAreaAndCheck(page, config);
+      const isPinpoint = resolvedUrl.includes('pinpoint.aidt.ai');
 
-      if (!clickResult.success) {
-        return clickResult;
+      if (!isPinpoint) {
+        // 페이지 로드 대기 (동적 콘텐츠 로딩)
+        await page.waitForTimeout(3000);
+
+        // 데이터 영역 클릭 및 에러 값 체크 (에듀템 대시보드)
+        const clickResult = await tryClickDataAreaAndCheck(page, config);
+
+        if (!clickResult.success) {
+          return { ...clickResult, checkedUrl: resolvedUrl };
+        }
+
+        // 선택자 체크
+        const selectorResult = await checkSelector(page, config);
+
+        const collectedValues: SelectorValue[] = [
+          ...(clickResult.collectedValues || [])
+        ];
+
+        const elapsed = Date.now() - startTime;
+
+        logger.info(`Playwright 체크 완료: ${config.name}`, { result: selectorResult, elapsed: `${elapsed}ms`, attempt });
+
+        return {
+          ...selectorResult,
+          collectedValues: collectedValues.length > 0 ? collectedValues : undefined,
+          checkedUrl: resolvedUrl
+        };
+      } else {
+        // Pinpoint는 DOM 로딩 대기
+        await page.waitForTimeout(2000);
       }
 
       // 선택자 체크
-      const selectorResult = await checkSelector(page, config);
-
-      const collectedValues: SelectorValue[] = [
-        ...(clickResult.collectedValues || [])
-      ];
-
+      const result = await checkSelector(page, config);
       const elapsed = Date.now() - startTime;
 
-      logger.info(`Playwright 체크 완료: ${config.name}`, { result: selectorResult, elapsed: `${elapsed}ms` });
+      logger.info(`Playwright 체크 완료: ${config.name}`, { result, elapsed: `${elapsed}ms`, attempt });
 
-      return {
-        ...selectorResult,
-        collectedValues: collectedValues.length > 0 ? collectedValues : undefined
-      };
-    } else {
-      // Pinpoint는 DOM 로딩 대기
-      await page.waitForTimeout(2000);
-    }
+      return { ...result, checkedUrl: resolvedUrl };
+    } catch (error: any) {
+      lastError = error;
+      logger.warn(`Playwright 체크 실패 (${attempt}/${MAX_CHECK_RETRIES}): ${config.name}`, { error: error?.message });
 
-    // 선택자 체크
-    const result = await checkSelector(page, config);
-    const elapsed = Date.now() - startTime;
+      // 브라우저 크래시 시 공유 인스턴스 초기화 후 재연결
+      if (!browser.isConnected()) {
+        sharedBrowser = null;
+        logger.warn('Playwright 브라우저 크래시 감지, 재연결 시도');
+      }
 
-    logger.info(`Playwright 체크 완료: ${config.name}`, { result, elapsed: `${elapsed}ms` });
-
-    return result;
-  } catch (error: any) {
-    logger.error(`Playwright 체크 실패: ${config.name}`, { error: error?.message || error });
-    // 브라우저가 크래시된 경우 공유 인스턴스 초기화
-    if (!browser.isConnected()) {
-      sharedBrowser = null;
-      logger.warn('Playwright 브라우저 크래시 감지, 다음 체크 시 재연결');
-    }
-    return {
-      success: false,
-      error: error?.message || '알 수 없음'
-    };
-  } finally {
-    if (context) {
-      try { await context.close(); } catch { /* 무시 */ }
+      if (attempt < MAX_CHECK_RETRIES) {
+        logger.info(`${RETRY_DELAY / 1000}초 후 재시도...`);
+        await new Promise(r => setTimeout(r, RETRY_DELAY));
+      }
+    } finally {
+      if (context) {
+        try { await context.close(); } catch { /* 무시 */ }
+      }
     }
   }
+
+  // 모든 재시도 실패
+  logger.error(`Playwright 체크 최종 실패: ${config.name}`, { error: lastError?.message });
+  return {
+    success: false,
+    error: lastError?.message || '알 수 없음',
+    checkedUrl: resolvedUrl
+  };
 }
 
 /**

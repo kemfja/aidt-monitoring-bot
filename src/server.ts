@@ -4,6 +4,7 @@ import { configManager } from './config';
 import { scheduler } from './core/scheduler';
 import { jsonRepository } from './repositories/json-repository';
 import logger from './utils/logger';
+import { closeSharedBrowser } from './utils/playwright-checker';
 
 /**
  * 서버 시작
@@ -32,15 +33,17 @@ async function startServer(): Promise<void> {
 }
 
 // Graceful shutdown
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
   logger.info('서버 종료 요청 수신');
   scheduler.stop();
+  await closeSharedBrowser();
   process.exit(0);
 });
 
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
   logger.info('서버 종료 요청 수신');
   scheduler.stop();
+  await closeSharedBrowser();
   process.exit(0);
 });
 

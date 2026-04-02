@@ -103,9 +103,8 @@ export class Notifier {
     const statusText = result.status === 'error' ? '에러' : '정상';
     const color = result.status === 'error' ? 'danger' : 'good';
 
-    // URL 조회
-    const urlConfig = await jsonRepository.findUrlById(result.urlId);
-    const targetUrl = urlConfig?.url || 'N/A';
+    // URL 조회 (동적 생성된 URL 우선)
+    const targetUrl = result.checkedUrl || (await jsonRepository.findUrlById(result.urlId))?.url || 'N/A';
 
     return {
       text: `${statusEmoji} [${result.urlName}] ${statusText}`,
@@ -174,7 +173,7 @@ export class Notifier {
           color: 'danger',
           fields: results.flatMap((result) => {
             const urlConfig = urlConfigs.find((u) => u.id === result.urlId);
-            const targetUrl = urlConfig?.url || 'N/A';
+            const targetUrl = result.checkedUrl || urlConfig?.url || 'N/A';
 
             return [
               {

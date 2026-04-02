@@ -75,6 +75,7 @@ export class Monitor {
       responseTime: validation.responseTime ?? 0,
       errorMessage: validation.errorMessage,
       selectorValues: playwrightResult?.collectedValues,
+      checkedUrl: playwrightResult?.checkedUrl,
       grafanaCheckDetail,
     };
 

@@ -48,6 +48,8 @@ export interface MonitorResult {
   id: string;
   urlId: string;
   urlName: string;
+  /** 체크 시 실제 사용된 URL (동적 생성된 경우 원본과 다를 수 있음) */
+  checkedUrl?: string;
   timestamp: string;
   status: 'success' | 'error';
   statusCode?: number;
