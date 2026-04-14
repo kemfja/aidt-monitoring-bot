@@ -29,6 +29,20 @@ export interface ErrorConditions {
 }
 
 /**
+ * 서비스별 시간대 에러 조건
+ */
+export interface ServiceTimeRange {
+  /** 시간 조건을 적용할 서비스명 목록 */
+  services: string[];
+  /** 에러 판단 시작 시간 (0~23, 시간단위) */
+  startHour: number;
+  /** 시작 시간 이후 버퍼 (분 단위, 예: 20 → startHour:8이면 8:20부터) */
+  startBufferMinutes?: number;
+  /** 에러 판단 종료 시간 (0~23, 시간단위) */
+  endHour: number;
+}
+
+/**
  * Grafana 공용 대시보드 API 체크 설정
  */
 export interface GrafanaApiCheck {
@@ -40,14 +54,20 @@ export interface GrafanaApiCheck {
   panelIds: number[];
   /** 에러 임계값 */
   threshold: number;
-  /** 조회 시간 범위 (시간 단위) */
+  /** 임계값 비교 연산자 (기본값: gte = 이상) */
+  thresholdOperator?: 'gte' | 'eq';
+  /** 조회 시간 범위 (시간 단위, 시작 시 사용) */
   timeRangeHours: number;
+  /** 정시 체크 시 조회 시간 범위 (시간 단위, 미설정 시 timeRangeHours 사용) */
+  scheduledTimeRangeHours?: number;
   /** 조회 간격 (ms) */
   intervalMs: number;
   /** 최대 데이터 포인트 */
   maxDataPoints: number;
   /** 임계값 검사 대상 서비스명 목록 (정확히 일치) */
   targetServices: string[];
+  /** 서비스별 시간대 에러 조건 (미지정 시 모든 시간대에 대해 체크) */
+  serviceTimeRanges?: ServiceTimeRange[];
 }
 
 /**

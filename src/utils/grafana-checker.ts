@@ -4,9 +4,53 @@ import { GrafanaCheckDetail, GrafanaDataPoint } from '../models/monitor-result';
 import logger from './logger';
 
 /**
+ * frame에서 서비스명 추출 (schema.name 우선, executedQueryString 대체)
+ */
+function extractServiceName(frame: any, panelId: number): string {
+  // 1) schema.name에서 추출
+  if (frame.schema?.name) {
+    return frame.schema.name;
+  }
+
+  // 2) frame.schema.fields[].config.custom.executedQueryString에서 추출
+  const fields = frame.schema?.fields;
+  if (Array.isArray(fields)) {
+    for (const field of fields) {
+      const eqs = field?.config?.custom?.executedQueryString;
+      if (typeof eqs === 'string' && eqs.length > 0) {
+        return eqs;
+      }
+    }
+  }
+
+  return `panel-${panelId}`;
+}
+
+/**
+ * 서비스가 지정된 시간대 내에 있는지 확인
+ */
+function isWithinTimeRange(serviceName: string, dataPointHour: number, dataPointMinute: number, serviceTimeRanges?: { services: string[]; startHour: number; startBufferMinutes?: number; endHour: number }[]): boolean {
+  if (!serviceTimeRanges || serviceTimeRanges.length === 0) {
+    return true; // 시간대 제한 없음
+  }
+
+  const matchedRange = serviceTimeRanges.find(r => r.services.includes(serviceName));
+  if (!matchedRange) {
+    return true; // 해당 서비스에 대한 시간대 제한 없음
+  }
+
+  // startBufferMinutes 처리 (예: startHour=8, startBufferMinutes=20 → 8:20 이후)
+  const buffer = matchedRange.startBufferMinutes ?? 0;
+  const isAfterStart = dataPointHour > matchedRange.startHour ||
+    (dataPointHour === matchedRange.startHour && dataPointMinute >= buffer);
+
+  return isAfterStart && dataPointHour < matchedRange.endHour;
+}
+
+/**
  * Grafana 공용 대시보드 API 체커
  */
-export async function checkGrafanaApi(config: UrlConfig): Promise<{
+export async function checkGrafanaApi(config: UrlConfig, isStartup = true): Promise<{
   isValid: boolean;
   errorMessage?: string;
   responseTime: number;
@@ -14,15 +58,23 @@ export async function checkGrafanaApi(config: UrlConfig): Promise<{
 }> {
   const startTime = Date.now();
   const grafanaConfig = config.errorConditions?.grafanaApiCheck!;
-  const { dashboardUid, hostUrl, panelIds, threshold, timeRangeHours, intervalMs, maxDataPoints, targetServices } = grafanaConfig;
+  const { dashboardUid, hostUrl, panelIds, threshold, thresholdOperator, timeRangeHours, scheduledTimeRangeHours, intervalMs, maxDataPoints, targetServices, serviceTimeRanges } = grafanaConfig;
+  const isThresholdExceeded = thresholdOperator === 'eq'
+    ? (val: number) => val === threshold
+    : (val: number) => val >= threshold;
+
+  // 시작 시에는 전체 범위, 정시 체크 시에는 scheduledTimeRangeHours 사용
+  const effectiveTimeRange = (!isStartup && scheduledTimeRangeHours != null)
+    ? scheduledTimeRangeHours
+    : timeRangeHours;
 
   const to = Date.now();
-  const from = to - timeRangeHours * 3600000;
+  const from = to - effectiveTimeRange * 3600000;
 
   const allDataPoints: GrafanaDataPoint[] = [];
   const allErrorDataPoints: GrafanaDataPoint[] = [];
 
-  logger.info(`Grafana 공용 API 체크 시작: ${config.name}`, { dashboardUid, panelIds, threshold });
+  logger.info(`Grafana 공용 API 체크 시작: ${config.name}`, { dashboardUid, panelIds, threshold, timeRangeHours: effectiveTimeRange, isStartup });
 
   // 각 패널 순차 조회
   for (const panelId of panelIds) {
@@ -60,7 +112,7 @@ export async function checkGrafanaApi(config: UrlConfig): Promise<{
         if (!refResult?.frames) continue;
 
         for (const frame of refResult.frames) {
-          const serviceName = frame.schema?.name || `panel-${panelId}`;
+          const serviceName = extractServiceName(frame, panelId);
           const values = frame.data?.values;
           if (!values || values.length < 2) continue;
 
@@ -71,16 +123,22 @@ export async function checkGrafanaApi(config: UrlConfig): Promise<{
             const val = valueArray[i];
             if (val === null || val === undefined) continue;
 
+            // 요청 시간 범위 밖의 데이터 제외 (Grafana가 범위를 무시하고 전체 반환하는 경우 대응)
+            if (timeArray[i] < from) continue;
+
             // targetServices에 지정된 서비스명과 정확히 일치하는 데이터만 수집
             const isTarget = !targetServices || targetServices.length === 0 ||
               targetServices.some(t => serviceName === t);
             if (!isTarget) continue;
 
-            const timeStr = new Date(timeArray[i]).toISOString();
+            const dataPointTime = new Date(timeArray[i]);
+            const timeStr = dataPointTime.toISOString();
             const point: GrafanaDataPoint = { service: serviceName, time: timeStr, value: val };
 
             allDataPoints.push(point);
-            if (val >= threshold) {
+
+            // 임계값 조건 + 시간대 조건 충족 시 에러
+            if (isThresholdExceeded(val) && isWithinTimeRange(serviceName, dataPointTime.getHours(), dataPointTime.getMinutes(), serviceTimeRanges)) {
               allErrorDataPoints.push(point);
             }
           }
@@ -98,10 +156,15 @@ export async function checkGrafanaApi(config: UrlConfig): Promise<{
 
   let errorMessage: string | undefined;
   if (!isValid) {
-    const summary = allErrorDataPoints.slice(0, 5).map(p =>
-      `${p.service} @ ${new Date(p.time).toLocaleString('ko-KR')} = ${p.value}`
-    ).join(', ');
-    errorMessage = `수치 임계값(${threshold}) 초과 ${allErrorDataPoints.length}건: ${summary}`;
+    // 서비스별 에러 건수 집계
+    const serviceCounts = new Map<string, number>();
+    for (const p of allErrorDataPoints) {
+      serviceCounts.set(p.service, (serviceCounts.get(p.service) || 0) + 1);
+    }
+    const summary = Array.from(serviceCounts.entries())
+      .map(([service, count]) => `${service}(${count})`)
+      .join(', ');
+    errorMessage = `에러 발생 ${allErrorDataPoints.length}건: ${summary}`;
   }
 
   logger.info(`Grafana 공용 API 체크 완료: ${config.name}`, {
@@ -119,6 +182,7 @@ export async function checkGrafanaApi(config: UrlConfig): Promise<{
       type: 'grafana',
       apiUrl: `${hostUrl}/api/public/dashboards/${dashboardUid}`,
       threshold,
+      thresholdOperator: thresholdOperator || 'gte',
       targetServices: targetServices || [],
       dataPoints: allDataPoints,
       errorDataPoints: allErrorDataPoints

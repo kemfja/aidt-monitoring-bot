@@ -13,7 +13,7 @@ export class Monitor {
   /**
    * 단일 URL 체크 실행
    */
-  async checkUrl(config: UrlConfig): Promise<MonitorResult> {
+  async checkUrl(config: UrlConfig, isStartup = true): Promise<MonitorResult> {
     const timestamp = new Date().toISOString();
 
     logger.info(`URL 체크 시작: ${config.name} (${config.url})`);
@@ -30,7 +30,7 @@ export class Monitor {
 
     if (hasGrafanaApiCheck) {
       // Grafana API 직접 체크
-      const grafanaResult = await checkGrafanaApi(config);
+      const grafanaResult = await checkGrafanaApi(config, isStartup);
       validation = {
         isValid: grafanaResult.isValid,
         errorMessage: grafanaResult.errorMessage,
@@ -185,7 +185,7 @@ export class Monitor {
   /**
    * 여러 URL 일괄 체크
    */
-  async checkUrls(configs: UrlConfig[]): Promise<MonitorResult[]> {
+  async checkUrls(configs: UrlConfig[], isStartup = true): Promise<MonitorResult[]> {
     const results: MonitorResult[] = [];
 
     // 활성화된 URL만 체크
@@ -193,7 +193,7 @@ export class Monitor {
 
     for (const config of enabledConfigs) {
       try {
-        const result = await this.checkUrl(config);
+        const result = await this.checkUrl(config, isStartup);
         results.push(result);
       } catch (error) {
         logger.error(`URL 체크 중 예외 발생: ${config.name}`, { error });

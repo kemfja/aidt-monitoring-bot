@@ -45,8 +45,8 @@ const RETRY_DELAY = 5000;
 /** 최대 재시도 횟수 */
 const MAX_CHECK_RETRIES = 2;
 
-/** 브라우저 keep-alive 간격 (2분) */
-const KEEP_ALIVE_INTERVAL = 2 * 60 * 1000;
+/** 브라우저 keep-alive 간격 (10분) */
+const KEEP_ALIVE_INTERVAL = 10 * 60 * 1000;
 
 /** keep-alive 타이머 */
 let keepAliveTimer: NodeJS.Timeout | null = null;

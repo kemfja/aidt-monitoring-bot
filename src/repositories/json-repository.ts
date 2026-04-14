@@ -236,6 +236,29 @@ export class JsonRepository {
     return `${year}-${month}-${day}`;
   }
 
+  // ========== 마지막 모니터링 실행 시간 ==========
+
+  /**
+   * 마지막 모니터링 실행 시간 저장
+   */
+  async saveLastMonitorRun(): Promise<void> {
+    const filePath = path.join(this.dataDir, 'last-monitor-run.json');
+    await fs.writeFile(filePath, JSON.stringify(new Date().toISOString()));
+  }
+
+  /**
+   * 마지막 모니터링 실행 시간 조회
+   */
+  async getLastMonitorRun(): Promise<string | null> {
+    try {
+      const filePath = path.join(this.dataDir, 'last-monitor-run.json');
+      const content = await fs.readFile(filePath, 'utf-8');
+      return JSON.parse(content) as string;
+    } catch {
+      return null;
+    }
+  }
+
   // ========== Webhook 관리 ==========
 
   /**

@@ -577,6 +577,7 @@ function renderErrorConditions(conditions) {
   // Grafana API 체크
   if (conditions.grafanaApiCheck) {
     const g = conditions.grafanaApiCheck;
+    const opText = g.thresholdOperator === 'eq' ? '일치' : '이상';
     html += `
       <div class="condition-item">
         <div class="condition-type">Grafana API 체크</div>
@@ -594,7 +595,7 @@ function renderErrorConditions(conditions) {
         </div>
         <div class="condition-detail-row">
           <span class="condition-label">임계값:</span>
-          <span class="condition-value">${g.threshold !== undefined ? g.threshold : '-'} 이상 시 에러</span>
+          <span class="condition-value">${g.threshold !== undefined ? g.threshold : '-'} ${opText} 시 에러</span>
         </div>
         <div class="condition-detail-row">
           <span class="condition-label">시간 범위:</span>
@@ -604,6 +605,27 @@ function renderErrorConditions(conditions) {
         <div class="condition-detail-row">
           <span class="condition-label">대상 서비스:</span>
           <span class="condition-value">${g.targetServices.map(s => `<code>${escapeHtml(s)}</code>`).join(', ')}</span>
+        </div>
+        ` : ''}
+        ${g.serviceTimeRanges && g.serviceTimeRanges.length > 0 ? `
+        <div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #ddd;">
+          <div style="font-weight: 600; margin-bottom: 6px; color: #555;">에러 판단 로직</div>
+          ${g.serviceTimeRanges.map(r => `
+            <div class="condition-detail-row">
+              <span class="condition-label" style="font-size: 12px;">${r.services.map(s => escapeHtml(s)).join(', ')}</span>
+              <span class="condition-value" style="font-size: 12px;">${String(r.startHour).padStart(2, '0')}:00 ~ ${String(r.endHour).padStart(2, '0')}:00 시간대에 값이 ${g.threshold}${opText}하면 에러</span>
+            </div>
+          `).join('')}
+          ${(() => {
+            const timed = new Set(g.serviceTimeRanges.flatMap(r => r.services));
+            const untimed = g.targetServices.filter(s => !timed.has(s));
+            return untimed.length > 0 ? `
+              <div class="condition-detail-row">
+                <span class="condition-label" style="font-size: 12px;">${untimed.map(s => escapeHtml(s)).join(', ')}</span>
+                <span class="condition-value" style="font-size: 12px;">시간 제한 없이 값이 ${g.threshold}${opText}하면 에러</span>
+              </div>
+            ` : '';
+          })()}
         </div>
         ` : ''}
       </div>
@@ -844,7 +866,8 @@ function renderSelectorValues(selectorValues) {
  * Grafana API 체크 상세 렌더링
  */
 function renderGrafanaCheckDetail(detail) {
-  const { apiUrl, threshold, targetServices, dataPoints, errorDataPoints } = detail;
+  const { apiUrl, threshold, thresholdOperator, targetServices, dataPoints, errorDataPoints } = detail;
+  const opText = thresholdOperator === 'eq' ? '일치' : '이상';
 
   // targetServices에 해당하는 데이터만 필터링
   const targetSet = targetServices && targetServices.length > 0 ? new Set(targetServices) : null;
@@ -865,7 +888,7 @@ function renderGrafanaCheckDetail(detail) {
         </div>
         <div class="condition-detail-row">
           <span class="condition-label">임계값:</span>
-          <span class="condition-value"><strong>${threshold} 이상</strong></span>
+          <span class="condition-value"><strong>${threshold} ${opText}</strong></span>
         </div>
         <div class="condition-detail-row">
           <span class="condition-label">전체 데이터:</span>
@@ -880,10 +903,22 @@ function renderGrafanaCheckDetail(detail) {
       </div>
   `;
 
-  // 에러 데이터 포인트 테이블
+  // 에러 데이터 서비스별 요약 + 상세 테이블
   if (filteredErrors.length > 0) {
+    // 서비스별 에러 건수 집계
+    const serviceCounts = new Map();
+    for (const p of filteredErrors) {
+      serviceCounts.set(p.service, (serviceCounts.get(p.service) || 0) + 1);
+    }
+    const summary = Array.from(serviceCounts.entries())
+      .map(([service, count]) => `${escapeHtml(service)}(${count})`)
+      .join(', ');
+
     html += `
-      <h4 style="color: #dc3545; margin: 10px 0 5px;">임계값 초과 데이터</h4>
+      <div style="margin-top: 10px; padding: 10px; background: #fff5f5; border-radius: 5px; border-left: 3px solid #dc3545;">
+        <strong style="color: #dc3545;">에러 발생 ${filteredErrors.length}건:</strong> ${summary}
+      </div>
+      <h4 style="color: #dc3545; margin: 10px 0 5px;">임계값 ${opText} 데이터</h4>
       <table class="condition-table">
         <thead><tr><th>서비스</th><th>시간</th><th>값</th></tr></thead>
         <tbody>
@@ -907,7 +942,7 @@ function renderGrafanaCheckDetail(detail) {
           <thead><tr><th>번호</th><th>서비스</th><th>시간</th><th>값</th></tr></thead>
           <tbody>
             ${filteredData.map((p, idx) => {
-              const isError = p.value >= threshold;
+              const isError = thresholdOperator === 'eq' ? p.value === threshold : p.value >= threshold;
               return `
                 <tr style="${isError ? 'background: #fff5f5;' : ''}">
                   <td>${idx + 1}</td>

@@ -35,6 +35,8 @@ export interface GrafanaCheckDetail {
   type: 'grafana';
   apiUrl: string;
   threshold: number;
+  /** 임계값 비교 연산자 */
+  thresholdOperator?: 'gte' | 'eq';
   /** 임계값 검사 대상 서비스명 목록 (이 목록에 해당하는 데이터만 노출) */
   targetServices?: string[];
   dataPoints: GrafanaDataPoint[];
