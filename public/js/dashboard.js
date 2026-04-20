@@ -609,23 +609,37 @@ function renderErrorConditions(conditions) {
         ` : ''}
         ${g.serviceTimeRanges && g.serviceTimeRanges.length > 0 ? `
         <div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #ddd;">
-          <div style="font-weight: 600; margin-bottom: 6px; color: #555;">에러 판단 로직</div>
-          ${g.serviceTimeRanges.map(r => `
-            <div class="condition-detail-row">
-              <span class="condition-label" style="font-size: 12px;">${r.services.map(s => escapeHtml(s)).join(', ')}</span>
-              <span class="condition-value" style="font-size: 12px;">${String(r.startHour).padStart(2, '0')}:00 ~ ${String(r.endHour).padStart(2, '0')}:00 시간대에 값이 ${g.threshold}${opText}하면 에러</span>
-            </div>
-          `).join('')}
+          <div style="font-weight: 600; margin-bottom: 8px; color: #555;">에러 판단 로직</div>
+          <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+            <thead>
+              <tr style="background: #f5f5f5; border-bottom: 2px solid #ddd;">
+                <th style="padding: 6px 8px; text-align: left; font-weight: 600;">대상 서비스</th>
+                <th style="padding: 6px 8px; text-align: center; font-weight: 600;">판단 시간대</th>
+                <th style="padding: 6px 8px; text-align: center; font-weight: 600;">에러 조건</th>
+              </tr>
+            </thead>
+            <tbody>
+          ${g.serviceTimeRanges.map(r => {
+            const startMin = r.startBufferMinutes ? String(r.startBufferMinutes).padStart(2, '0') : '00';
+            return `
+              <tr style="border-bottom: 1px solid #eee;">
+                <td style="padding: 6px 8px;"><code>${r.services.map(s => escapeHtml(s)).join('</code>, <code>')}</code></td>
+                <td style="padding: 6px 8px; text-align: center;">${String(r.startHour).padStart(2, '0')}:${startMin} ~ ${String(r.endHour).padStart(2, '0')}:00</td>
+                <td style="padding: 6px 8px; text-align: center;">값이 ${g.threshold}${opText}하면 에러</td>
+              </tr>`;
+          }).join('')}
           ${(() => {
             const timed = new Set(g.serviceTimeRanges.flatMap(r => r.services));
             const untimed = g.targetServices.filter(s => !timed.has(s));
             return untimed.length > 0 ? `
-              <div class="condition-detail-row">
-                <span class="condition-label" style="font-size: 12px;">${untimed.map(s => escapeHtml(s)).join(', ')}</span>
-                <span class="condition-value" style="font-size: 12px;">시간 제한 없이 값이 ${g.threshold}${opText}하면 에러</span>
-              </div>
-            ` : '';
+              <tr style="border-bottom: 1px solid #eee;">
+                <td style="padding: 6px 8px;"><code>${untimed.map(s => escapeHtml(s)).join('</code>, <code>')}</code></td>
+                <td style="padding: 6px 8px; text-align: center;">-</td>
+                <td style="padding: 6px 8px; text-align: center;">시간 제한 없이 값이 ${g.threshold}${opText}하면 에러</td>
+              </tr>` : '';
           })()}
+            </tbody>
+          </table>
         </div>
         ` : ''}
       </div>
