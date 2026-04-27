@@ -101,7 +101,7 @@ router.post('/test-notification', requireApiKey, async (_req, res) => {
       errorMessage: '테스트 에러 메시지: Failed 값이 찍혔습니다.',
     };
 
-    const success = await notifier.sendErrorAlert(testResult);
+    const success = await notifier.sendAlert(testResult);
 
     if (success) {
       logger.info('테스트 알림 발송 완료');
@@ -187,11 +187,11 @@ router.post('/test-check', requireApiKey, async (req, res) => {
     }
 
     // 에러 결과만 알림
-    const errorResults = results.filter((r: any) => r.status === 'error');
+    const errorResults = results.filter((r: any) => r.status === 'error' || r.status === 'warning');
     let alertSent = 0;
 
     for (const error of errorResults) {
-      const success = await notifier.sendErrorAlert(error);
+      const success = await notifier.sendAlert(error);
       if (success) alertSent++;
     }
 

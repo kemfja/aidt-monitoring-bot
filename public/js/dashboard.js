@@ -27,7 +27,7 @@ let historyPage = 1;
 let historyPageSize = 12;
 let totalHistoryPages = 1;
 let currentHistoryUrlId = '';
-let statusFilter = { all: true, success: true, error: true };
+let statusFilter = { all: true, success: true, error: true, warning: true };
 
 // DOM 로드 시 초기화
 document.addEventListener('DOMContentLoaded', () => {
@@ -58,17 +58,21 @@ function initializeApp() {
   // 상태 필터 체크박스 이벤트
   document.getElementById('filterAll').addEventListener('change', (e) => {
     if (e.target.checked) {
-      // 전체 체크 = 정상+에러 모두 체크
+      // 전체 체크 = 정상+에러+경고 모두 체크
       statusFilter.success = true;
       statusFilter.error = true;
+      statusFilter.warning = true;
       document.getElementById('filterSuccess').checked = true;
       document.getElementById('filterError').checked = true;
+      document.getElementById('filterWarning').checked = true;
     } else {
       // 전체 해제
       statusFilter.success = false;
       statusFilter.error = false;
+      statusFilter.warning = false;
       document.getElementById('filterSuccess').checked = false;
       document.getElementById('filterError').checked = false;
+      document.getElementById('filterWarning').checked = false;
     }
     historyPage = 1;
     renderHistoryTable(currentHistory);
@@ -77,13 +81,8 @@ function initializeApp() {
 
   document.getElementById('filterSuccess').addEventListener('change', (e) => {
     statusFilter.success = e.target.checked;
-    // 정상과 에러 둘 다 체크되면 전체도 체크
-    const errorChecked = document.getElementById('filterError').checked;
-    if (statusFilter.success && errorChecked) {
-      document.getElementById('filterAll').checked = true;
-    } else {
-      document.getElementById('filterAll').checked = false;
-    }
+    const allChecked = statusFilter.success && statusFilter.error && statusFilter.warning;
+    document.getElementById('filterAll').checked = allChecked;
     historyPage = 1;
     renderHistoryTable(currentHistory);
     renderPagination();
@@ -91,13 +90,17 @@ function initializeApp() {
 
   document.getElementById('filterError').addEventListener('change', (e) => {
     statusFilter.error = e.target.checked;
-    // 정상과 에러 둘 다 체크되면 전체도 체크
-    const successChecked = document.getElementById('filterSuccess').checked;
-    if (statusFilter.error && successChecked) {
-      document.getElementById('filterAll').checked = true;
-    } else {
-      document.getElementById('filterAll').checked = false;
-    }
+    const allChecked = statusFilter.success && statusFilter.error && statusFilter.warning;
+    document.getElementById('filterAll').checked = allChecked;
+    historyPage = 1;
+    renderHistoryTable(currentHistory);
+    renderPagination();
+  });
+
+  document.getElementById('filterWarning').addEventListener('change', (e) => {
+    statusFilter.warning = e.target.checked;
+    const allChecked = statusFilter.success && statusFilter.error && statusFilter.warning;
+    document.getElementById('filterAll').checked = allChecked;
     historyPage = 1;
     renderHistoryTable(currentHistory);
     renderPagination();
@@ -291,15 +294,14 @@ function renderHistoryTable(results) {
 
   // 상태 필터링
   let filteredResults = results;
-  const allChecked = document.getElementById('filterAll').checked;
-
+  const allChecked = statusFilter.success && statusFilter.error && statusFilter.warning;
   if (allChecked) {
-    // 전체 체크 = 정상+에러 모두 표시
     filteredResults = results;
   } else {
     filteredResults = results.filter(r => {
       if (statusFilter.success && r.status === 'success') return true;
       if (statusFilter.error && r.status === 'error') return true;
+      if (statusFilter.warning && r.status === 'warning') return true;
       return false;
     });
   }
@@ -318,8 +320,8 @@ function renderHistoryTable(results) {
 
   tbody.innerHTML = pageResults.map(r => {
     const urlName = r.urlName || '알 수 없음';
-    const statusClass = r.status === 'success' ? 'success' : 'error';
-    const statusText = r.status === 'success' ? '정상' : '에러';
+    const statusClass = r.status === 'success' ? 'success' : r.status === 'warning' ? 'warning' : 'error';
+    const statusText = r.status === 'success' ? '정상' : r.status === 'warning' ? '경고' : '에러';
 
     return `
       <tr class="${r.status} clickable" data-url-id="${r.urlId}" data-result-id="${r.id}">
@@ -431,12 +433,15 @@ async function showCheckResults() {
       .filter(r => r !== null)
       .map(item => {
         const isError = item.result.status === 'error';
+        const isWarning = item.result.status === 'warning';
+        const statusClass = isError ? 'error' : isWarning ? 'warning' : '';
+        const statusText = isError ? '에러' : isWarning ? '경고' : '정상';
         return `
-          <div class="check-result-item ${isError ? 'error' : ''}">
+          <div class="check-result-item ${statusClass}">
             <div class="check-result-header">
               <span class="check-result-name">${escapeHtml(item.url.name)}</span>
               <span class="check-result-status ${item.result.status}">
-                ${isError ? '에러' : '정상'}
+                ${statusText}
               </span>
             </div>
             <div class="check-result-details">
@@ -578,9 +583,10 @@ function renderErrorConditions(conditions) {
   if (conditions.grafanaApiCheck) {
     const g = conditions.grafanaApiCheck;
     const opText = g.thresholdOperator === 'eq' ? '일치' : '이상';
+    const isStringMode = g.checkMode === 'stringPresence';
     html += `
       <div class="condition-item">
-        <div class="condition-type">Grafana API 체크</div>
+        <div class="condition-type">${isStringMode ? 'Loki 로그 체크' : 'Grafana API 체크'}</div>
         <div class="condition-detail-row">
           <span class="condition-label">대시보드 UID:</span>
           <span class="condition-value"><code>${escapeHtml(g.dashboardUid || '-')}</code></span>
@@ -594,12 +600,27 @@ function renderErrorConditions(conditions) {
           <span class="condition-value">${g.panelIds ? g.panelIds.join(', ') : '-'}</span>
         </div>
         <div class="condition-detail-row">
+          <span class="condition-label">체크 모드:</span>
+          <span class="condition-value">${isStringMode ? '문자열 존재 확인' : '임계값 비교'}</span>
+        </div>
+        ${isStringMode ? `
+        <div class="condition-detail-row">
+          <span class="condition-label">에러 조건:</span>
+          <span class="condition-value" style="color: #dc3545;">문자열에 <code>[error]</code> 포함 시 에러</span>
+        </div>
+        <div class="condition-detail-row">
+          <span class="condition-label">경고 조건:</span>
+          <span class="condition-value" style="color: #e67e22;">문자열에 <code>[warning]</code> 포함 시 경고</span>
+        </div>
+        ` : `
+        <div class="condition-detail-row">
           <span class="condition-label">임계값:</span>
           <span class="condition-value">${g.threshold !== undefined ? g.threshold : '-'} ${opText} 시 에러</span>
         </div>
+        `}
         <div class="condition-detail-row">
           <span class="condition-label">시간 범위:</span>
-          <span class="condition-value">${g.timeRangeHours ? g.timeRangeHours + '시간' : '-'}</span>
+          <span class="condition-value">초기 가동/재부팅 시 ${g.timeRangeHours ? g.timeRangeHours + '시간' : '-'}${g.scheduledTimeRangeHours ? ', 정각 체크 시 ' + g.scheduledTimeRangeHours + '시간' : ''}</span>
         </div>
         ${g.targetServices && g.targetServices.length > 0 ? `
         <div class="condition-detail-row">
@@ -774,8 +795,8 @@ function showResultDetail(result) {
 
   title.textContent = result.urlName || '체크 결과 상세';
 
-  const statusClass = result.status === 'success' ? 'success' : 'error';
-  const statusText = result.status === 'success' ? '정상' : '에러';
+  const statusClass = result.status === 'success' ? 'success' : result.status === 'warning' ? 'warning' : 'error';
+  const statusText = result.status === 'success' ? '정상' : result.status === 'warning' ? '경고' : '에러';
 
   let html = `
     <div class="detail-section">
@@ -880,7 +901,13 @@ function renderSelectorValues(selectorValues) {
  * Grafana API 체크 상세 렌더링
  */
 function renderGrafanaCheckDetail(detail) {
-  const { apiUrl, threshold, thresholdOperator, targetServices, dataPoints, errorDataPoints } = detail;
+  const { apiUrl, threshold, thresholdOperator, targetServices, dataPoints, errorDataPoints, checkMode, stringDataPoints, errorStringDataPoints } = detail;
+
+  // 문자열 존재 체크 모드
+  if (checkMode === 'stringPresence') {
+    return renderStringPresenceDetail(detail);
+  }
+
   const opText = thresholdOperator === 'eq' ? '일치' : '이상';
 
   // targetServices에 해당하는 데이터만 필터링
@@ -972,6 +999,95 @@ function renderGrafanaCheckDetail(detail) {
     </div>
   `;
 
+  return html;
+}
+
+/**
+ * 문자열 존재 체크 상세 렌더링 (Loki)
+ */
+function renderStringPresenceDetail(detail) {
+  const { apiUrl, stringDataPoints, errorStringDataPoints } = detail;
+  const allStrings = stringDataPoints || [];
+  const errorStrings = errorStringDataPoints || [];
+
+  // 에러/경고 분류
+  const errorItems = errorStrings.filter(p => p.line.includes('[error]'));
+  const warningItems = errorStrings.filter(p => p.line.includes('[warning]'));
+
+  let html = `
+    <div class="detail-section">
+      <h3>Loki 로그 체크 상세</h3>
+      <div class="condition-item">
+        <div class="condition-detail-row">
+          <span class="condition-label">API URL:</span>
+          <span class="condition-value"><code>${escapeHtml(apiUrl)}</code></span>
+        </div>
+        <div class="condition-detail-row">
+          <span class="condition-label">전체 로그:</span>
+          <span class="condition-value">${allStrings.length}건</span>
+        </div>
+        <div class="condition-detail-row">
+          <span class="condition-label">에러 로그:</span>
+          <span class="condition-value" style="color: ${errorItems.length > 0 ? '#dc3545' : '#28a745'};">
+            <strong>${errorItems.length}건</strong>
+          </span>
+        </div>
+        <div class="condition-detail-row">
+          <span class="condition-label">경고 로그:</span>
+          <span class="condition-value" style="color: ${warningItems.length > 0 ? '#e67e22' : '#28a745'};">
+            <strong>${warningItems.length}건</strong>
+          </span>
+        </div>
+      </div>
+  `;
+
+  // 에러 로그 표시
+  if (errorItems.length > 0) {
+    html += `
+      <h4 style="color: #dc3545; margin: 10px 0 5px;">에러 로그 (${errorItems.length}건)</h4>
+      <div class="data-values-container">
+        ${errorItems.map((p, idx) => `
+          <div style="padding: 8px 10px; margin: 4px 0; background: #fff5f5; border-left: 3px solid #dc3545; border-radius: 3px; font-family: monospace; font-size: 12px; white-space: pre-wrap; word-break: break-all;">
+            <div style="color: #999; margin-bottom: 4px;">${formatDateTime(p.time)}</div>
+            ${escapeHtml(p.line)}
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  // 경고 로그 표시
+  if (warningItems.length > 0) {
+    html += `
+      <h4 style="color: #e67e22; margin: 10px 0 5px;">경고 로그 (${warningItems.length}건)</h4>
+      <div class="data-values-container">
+        ${warningItems.map((p, idx) => `
+          <div style="padding: 8px 10px; margin: 4px 0; background: #fff8e1; border-left: 3px solid #e67e22; border-radius: 3px; font-family: monospace; font-size: 12px; white-space: pre-wrap; word-break: break-all;">
+            <div style="color: #999; margin-bottom: 4px;">${formatDateTime(p.time)}</div>
+            ${escapeHtml(p.line)}
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  // 전체 로그 (에러/경고 제외)
+  const normalItems = allStrings.filter(p => !p.line.includes('[error]') && !p.line.includes('[warning]'));
+  if (normalItems.length > 0) {
+    html += `
+      <h4 style="margin: 10px 0 5px;">기타 로그 (${normalItems.length}건)</h4>
+      <div class="data-values-container">
+        ${normalItems.map((p, idx) => `
+          <div style="padding: 8px 10px; margin: 4px 0; background: #f8f9fa; border-left: 3px solid #dee2e6; border-radius: 3px; font-family: monospace; font-size: 12px; white-space: pre-wrap; word-break: break-all;">
+            <div style="color: #999; margin-bottom: 4px;">${formatDateTime(p.time)}</div>
+            ${escapeHtml(p.line)}
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  html += `</div>`;
   return html;
 }
 

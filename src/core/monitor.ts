@@ -36,6 +36,7 @@ export class Monitor {
         errorMessage: grafanaResult.errorMessage,
         statusCode: 200,
         responseTime: grafanaResult.responseTime,
+        detectedStatus: grafanaResult.detectedStatus,
       };
       grafanaCheckDetail = grafanaResult.grafanaCheckDetail;
     } else if (hasCssSelectorCheck) {
@@ -70,7 +71,7 @@ export class Monitor {
       urlId: config.id,
       urlName: config.name,
       timestamp,
-      status: validation.isValid ? 'success' : 'error',
+      status: (validation as any).detectedStatus || (validation.isValid ? 'success' : 'error'),
       statusCode: validation.statusCode ?? 200,
       responseTime: validation.responseTime ?? 0,
       errorMessage: validation.errorMessage,
@@ -83,6 +84,12 @@ export class Monitor {
       logger.error(`URL 체크 실패: ${config.name}`, {
         url: config.url,
         statusCode: result.statusCode,
+        errorMessage: result.errorMessage,
+        responseTime: result.responseTime,
+      });
+    } else if (result.status === 'warning') {
+      logger.warn(`URL 체크 경고: ${config.name}`, {
+        url: config.url,
         errorMessage: result.errorMessage,
         responseTime: result.responseTime,
       });

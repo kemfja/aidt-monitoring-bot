@@ -14,9 +14,9 @@ export class Notifier {
   }
 
   /**
-   * 에러 발생 알림 전송
+   * 에러/경고 알림 전송
    */
-  async sendErrorAlert(result: MonitorResult): Promise<boolean> {
+  async sendAlert(result: MonitorResult): Promise<boolean> {
     // 저장소에서 Webhook URL 가져오기
     const webhookUrl = await jsonRepository.getWebhookUrl();
     const targetUrl = webhookUrl || this.slackConfig.webhookUrl;
@@ -26,7 +26,7 @@ export class Notifier {
       return false;
     }
 
-    const message = await this.generateErrorAlertMessage(result);
+    const message = await this.generateAlertMessage(result);
 
     try {
       const response = await fetch(targetUrl, {
@@ -96,12 +96,14 @@ export class Notifier {
   }
 
   /**
-   * 단일 에러 알림 메시지 생성
+   * 단일 알림 메시지 생성 (에러/경고)
    */
-  private async generateErrorAlertMessage(result: MonitorResult): Promise<any> {
-    const statusEmoji = result.status === 'error' ? ':x:' : ':white_check_mark:';
-    const statusText = result.status === 'error' ? '에러' : '정상';
-    const color = result.status === 'error' ? 'danger' : 'good';
+  private async generateAlertMessage(result: MonitorResult): Promise<any> {
+    const isError = result.status === 'error';
+    const isWarning = result.status === 'warning';
+    const statusEmoji = isError ? ':x:' : isWarning ? ':warning:' : ':white_check_mark:';
+    const statusText = isError ? '에러' : isWarning ? '경고' : '정상';
+    const color = isError ? 'danger' : isWarning ? 'warning' : 'good';
 
     // URL 조회 (동적 생성된 URL 우선)
     const targetUrl = result.checkedUrl || (await jsonRepository.findUrlById(result.urlId))?.url || 'N/A';
@@ -162,23 +164,25 @@ export class Notifier {
    */
   private async generateBatchAlertMessage(results: MonitorResult[]): Promise<any> {
     const errorCount = results.filter((r) => r.status === 'error').length;
+    const warningCount = results.filter((r) => r.status === 'warning').length;
 
     // 모든 URL 조회
     const urlConfigs = await jsonRepository.findAllUrls();
 
     return {
-      text: `:warning: ${results.length}개 URL 중 ${errorCount}개에서 에러 발생`,
+      text: `:warning: ${results.length}개 URL 중 ${errorCount}개 에러, ${warningCount}개 경고 발생`,
       attachments: [
         {
-          color: 'danger',
+          color: errorCount > 0 ? 'danger' : 'warning',
           fields: results.flatMap((result) => {
             const urlConfig = urlConfigs.find((u) => u.id === result.urlId);
             const targetUrl = result.checkedUrl || urlConfig?.url || 'N/A';
+            const statusLabel = result.status === 'error' ? '에러' : result.status === 'warning' ? '경고' : '정상';
 
             return [
               {
                 title: result.urlName,
-                value: `상태: ${result.status === 'error' ? '에러' : '정상'}\n` +
+                value: `상태: ${statusLabel}\n` +
                   `대시보드: <${targetUrl}|바로가기>\n` +
                   `코드: ${result.statusCode ?? 'N/A'}\n` +
                   `시간: ${result.responseTime}ms` +

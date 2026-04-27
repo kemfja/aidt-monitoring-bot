@@ -151,6 +151,11 @@ header h1 {
   color: #721c24;
 }
 
+.status-tag.warning {
+  background: #fff3cd;
+  color: #856404;
+}
+
 /* Buttons */
 .btn {
   padding: 10px 20px;
@@ -286,6 +291,11 @@ header h1 {
   color: #721c24;
 }
 
+.check-status.warning {
+  background: #fff3cd;
+  color: #856404;
+}
+
 .check-results {
   margin-top: 10px;
 }
@@ -301,6 +311,11 @@ header h1 {
 .check-result-item.error {
   border-left-color: #dc3545;
   background: #fff5f5;
+}
+
+.check-result-item.warning {
+  border-left-color: #e67e22;
+  background: #fff8e1;
 }
 
 .check-result-header {
@@ -329,6 +344,11 @@ header h1 {
 .check-result-status.error {
   background: #f8d7da;
   color: #721c24;
+}
+
+.check-result-status.warning {
+  background: #fff3cd;
+  color: #856404;
 }
 
 .check-result-details {
@@ -396,6 +416,11 @@ header h1 {
 .status-disabled {
   background: #f8d7da;
   color: #721c24;
+}
+
+.status-badge.status-warning {
+  background: #fff3cd;
+  color: #856404;
 }
 
 /* Slack 알림 테스트 Section */

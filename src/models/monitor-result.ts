@@ -20,12 +20,21 @@ export interface EdutemSelectorValue {
 export type SelectorValue = PinpointSelectorValue | EdutemSelectorValue;
 
 /**
- * Grafana API 데이터 포인트
+ * Grafana API 데이터 포인트 (임계값 체크)
  */
 export interface GrafanaDataPoint {
   service: string;
   time: string;
   value: number;
+}
+
+/**
+ * Grafana Loki 문자열 데이터 포인트
+ */
+export interface LokiStringDataPoint {
+  time: string;
+  line: string;
+  labels?: Record<string, string>;
 }
 
 /**
@@ -41,6 +50,12 @@ export interface GrafanaCheckDetail {
   targetServices?: string[];
   dataPoints: GrafanaDataPoint[];
   errorDataPoints: GrafanaDataPoint[];
+  /** 체크 모드 (threshold: 임계값, stringPresence: 문자열 존재) */
+  checkMode?: 'threshold' | 'stringPresence';
+  /** 문자열 데이터 포인트 (stringPresence 모드) */
+  stringDataPoints?: LokiStringDataPoint[];
+  /** 에러/경고 문자열 데이터 포인트 (stringPresence 모드) */
+  errorStringDataPoints?: LokiStringDataPoint[];
 }
 
 /**
@@ -53,7 +68,7 @@ export interface MonitorResult {
   /** 체크 시 실제 사용된 URL (동적 생성된 경우 원본과 다를 수 있음) */
   checkedUrl?: string;
   timestamp: string;
-  status: 'success' | 'error';
+  status: 'success' | 'error' | 'warning';
   statusCode?: number;
   responseTime: number;
   errorMessage?: string;
@@ -79,7 +94,7 @@ export interface UrlStatus {
   urlId: string;
   name: string;
   url: string;
-  status: 'success' | 'error' | 'pending';
+  status: 'success' | 'error' | 'warning' | 'pending';
   lastChecked?: string;
   lastStatusCode?: number;
   avgResponseTime?: number;

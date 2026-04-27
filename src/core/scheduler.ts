@@ -182,19 +182,21 @@ export class Scheduler {
         await jsonRepository.saveMonitorResult(result);
       }
 
-      // 에러 결과만 필터링
+      // 에러/경고 결과 필터링
       const errorResults = results.filter((r) => r.status === 'error');
+      const warningResults = results.filter((r) => r.status === 'warning');
+      const alertResults = [...errorResults, ...warningResults];
 
-      if (errorResults.length > 0) {
-        logger.info(`에러 ${errorResults.length}건 발생, 알림 전송`);
+      if (alertResults.length > 0) {
+        logger.info(`에러 ${errorResults.length}건, 경고 ${warningResults.length}건 발생, 알림 전송`);
 
         // 개별 알림 전송
-        for (const error of errorResults) {
-          await notifier.sendErrorAlert(error);
+        for (const alert of alertResults) {
+          await notifier.sendAlert(alert);
         }
       }
 
-      logger.info(`모니터링 완료: 전체 ${results.length}건, 성공 ${results.length - errorResults.length}건, 에러 ${errorResults.length}건`);
+      logger.info(`모니터링 완료: 전체 ${results.length}건, 성공 ${results.length - errorResults.length - warningResults.length}건, 에러 ${errorResults.length}건, 경고 ${warningResults.length}건`);
 
       // 실행 시간 기록
       this.lastRunTime = Date.now();

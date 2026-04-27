@@ -60,6 +60,8 @@ export interface GrafanaApiCheck {
   timeRangeHours: number;
   /** 정시 체크 시 조회 시간 범위 (시간 단위, 미설정 시 timeRangeHours 사용) */
   scheduledTimeRangeHours?: number;
+  /** 체크 모드 (threshold: 임계값 비교, stringPresence: 문자열 존재 확인) */
+  checkMode?: 'threshold' | 'stringPresence';
   /** 조회 간격 (ms) */
   intervalMs: number;
   /** 최대 데이터 포인트 */
